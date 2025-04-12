@@ -1,0 +1,80 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.1'
+          
+      - name: Run tests
+        run: go test -v ./...
+
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+          
+      - name: Deploy to VPS
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          # Copy deployment files to VPS
+          scp Dockerfile $SSH_USER@$SSH_HOST:~/gobot/
+          scp .env $SSH_USER@$SSH_HOST:~/gobot/
+          scp -r . $SSH_USER@$SSH_HOST:~/gobot/src/
+          
+          # Execute deployment script on VPS
+          ssh $SSH_USER@$SSH_HOST << 'ENDSSH'
+            cd ~/gobot
+            
+            # Setup container names
+            CONTAINER_NAME="gobot"
+            NEW_VERSION=$(date +%s)
+            NEW_CONTAINER="${CONTAINER_NAME}_${NEW_VERSION}"
+            
+            # Build new container
+            docker build -t $NEW_CONTAINER .
+            
+            # Start new container
+            docker run -d \
+              --name $NEW_CONTAINER \
+              --restart unless-stopped \
+              --network host \
+              --env-file .env \
+              $NEW_CONTAINER
+              
+            # Wait for container to be healthy
+            echo "Waiting for container to start..."
+            sleep 15
+            
+            # Get current container if exists
+            OLD_CONTAINER=$(docker ps -q -f name=$CONTAINER_NAME)
+            
+            if [ ! -z "$OLD_CONTAINER" ]; then
+              # Stop and remove old container
+              docker stop $OLD_CONTAINER
+              docker rm $OLD_CONTAINER
+            fi
+            
+            # Rename new container to standard name
+            docker rename $NEW_CONTAINER $CONTAINER_NAME
+            
+            # Cleanup old images (keep last 3)
+            docker images "gobot_*" --format "{{.ID}}" | tail -n +4 | xargs -r docker rmi
+            
+            echo "Deployment completed successfully"
+          ENDSSH 
