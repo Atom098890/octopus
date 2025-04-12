@@ -20,6 +20,9 @@ jobs:
           ssh-private-key: ${{ secrets.BOT_KEY }}
           log-public-key: false
 
+      - name: Verify Dockerfile
+        run: cat Dockerfile | grep "FROM golang:latest"
+
       - name: Deploy to VPS
         run: |
           # Prepare directory
@@ -28,7 +31,7 @@ jobs:
           
           # Upload code
           echo "Uploading code..."
-          rsync -q --no-verbose -e "ssh -o StrictHostKeyChecking=no -o LogLevel=QUIET -o UserKnownHostsFile=/dev/null" ./ atom@${{ secrets.SERVER_IP }}:/home/atom/goBot/ --exclude .git > /dev/null 2>&1
+          rsync -av -e "ssh -o StrictHostKeyChecking=no -o LogLevel=QUIET -o UserKnownHostsFile=/dev/null" ./ atom@${{ secrets.SERVER_IP }}:/home/atom/goBot/ --exclude .git
           
           # Create env file
           echo "Creating env file..."
@@ -45,13 +48,23 @@ jobs:
           echo "Starting deployment..."
           ssh -o StrictHostKeyChecking=no -o LogLevel=QUIET -o UserKnownHostsFile=/dev/null atom@${{ secrets.SERVER_IP }} "
             cd /home/atom/goBot &&
+            echo 'Verifying Dockerfile on server...' &&
+            cat Dockerfile | grep 'FROM golang:latest' &&
+            echo 'Building Docker image...' &&
             TIMESTAMP=\$(date +%s) &&
             IMAGE=\"gobot:\$TIMESTAMP\" &&
             docker build --pull --no-cache -t \$IMAGE . &&
+            echo 'Starting new container...' &&
             docker run -d --name gobot_new --restart unless-stopped --network host --env-file .env \$IMAGE &&
+            echo 'Waiting for container to start...' &&
             sleep 15 &&
-            docker ps -a | grep -q gobot_prod && docker stop gobot_prod && docker rm gobot_prod || true &&
+            echo 'Checking container status...' &&
+            docker ps | grep gobot_new &&
+            echo 'Stopping old container...' &&
+            (docker ps -a | grep -q gobot_prod && docker stop gobot_prod && docker rm gobot_prod || true) &&
+            echo 'Renaming container...' &&
             docker rename gobot_new gobot_prod &&
+            echo 'Cleaning up old images...' &&
             docker images 'gobot:*' --format '{{.ID}}' | tail -n +4 | xargs -r docker rmi
           "
           echo "Deployment completed successfully"
