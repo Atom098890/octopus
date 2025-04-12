@@ -1,14 +1,15 @@
-FROM golang:1.24.1-alpine AS builder
+FROM golang:latest AS builder
 
 WORKDIR /app
 
 # Install build dependencies
-RUN apk add --no-cache git
+RUN apk add --no-cache git || apt-get update && apt-get install -y git
+
+# Enable automatic toolchain download
+ENV GOTOOLCHAIN=auto
 
 # Copy only go mod files first for better caching
 COPY go.mod go.sum ./
-
-RUN go version
 
 # Download all dependencies
 RUN go mod download
