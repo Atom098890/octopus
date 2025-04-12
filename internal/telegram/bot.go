@@ -30,14 +30,21 @@ func NewBot(token string, logger *log.Logger) (*Bot, error) {
 }
 
 func (b *Bot) Start() {
-	// Очищаем предыдущие обновления
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 	updates := b.api.GetUpdatesChan(u)
-	
-	// Пропускаем все старые сообщения
-	for len(updates) > 0 {
-		<-updates
+
+	// Пропускаем обновления, которые могли накопиться во время простоя бота
+	// Но проверяем, не была ли среди них команда /start
+	for update := range updates {
+		if update.Message != nil && update.Message.Command() == "start" {
+			b.handleStartCommand(update.Message)
+		}
+		
+		// Проверяем, пуст ли канал
+		if len(updates) == 0 {
+			break
+		}
 	}
 
 	b.logger.Println("Bot started and ready to receive messages")
@@ -47,12 +54,63 @@ func (b *Bot) Start() {
 			continue
 		}
 
-		if update.Message.Command() == "start" {
-			b.users.Add(update.Message.Chat.ID)
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Привет! Я буду присылать тебе дайджест технологических новостей. Жди первую новость!")
+		// Обработка команд
+		switch update.Message.Command() {
+		case "start":
+			b.handleStartCommand(update.Message)
+		case "news":
+			// Отправляем сообщение о том, что обрабатываем запрос
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Получаю последние технологические новости...")
 			b.api.Send(msg)
+			
+			// Здесь можно вызвать processNews, но так как функция находится в main.go,
+			// просто отправляем уведомление
+			msg = tgbotapi.NewMessage(update.Message.Chat.ID, "Функция обработки новостей по запросу будет добавлена в следующем обновлении. Пока новости приходят по расписанию.")
+			b.api.Send(msg)
+		case "help":
+			b.handleHelpCommand(update.Message)
 		}
 	}
+}
+
+// handleStartCommand обрабатывает команду /start
+func (b *Bot) handleStartCommand(message *tgbotapi.Message) {
+	userID := message.Chat.ID
+	userName := message.From.UserName
+	
+	// Добавляем пользователя в список подписчиков
+	b.users.Add(userID)
+	
+	// Формируем приветственное сообщение
+	greeting := fmt.Sprintf("Привет, %s! 👋\n\n"+
+		"Я бот технологических новостей. Я буду присылать тебе интересные новости из мира технологий.\n\n"+
+		"<b>Доступные команды:</b>\n"+
+		"/start - Запустить бота\n"+
+		"/news - Получить последние новости\n"+
+		"/help - Показать помощь\n\n"+
+		"Жди первую новость или используй команду /news, чтобы получить её сейчас!",
+		userName)
+	
+	msg := tgbotapi.NewMessage(userID, greeting)
+	msg.ParseMode = "HTML"
+	b.api.Send(msg)
+	
+	b.logger.Printf("New user subscribed: %s (ID: %d)", userName, userID)
+}
+
+// handleHelpCommand обрабатывает команду /help
+func (b *Bot) handleHelpCommand(message *tgbotapi.Message) {
+	helpText := "<b>Помощь по использованию бота:</b>\n\n" +
+		"Этот бот отправляет технологические новости по расписанию.\n\n" +
+		"<b>Доступные команды:</b>\n" +
+		"/start - Запустить бота и подписаться на новости\n" +
+		"/news - Получить последние новости сейчас\n" +
+		"/help - Показать эту помощь\n\n" +
+		"Если у вас возникли проблемы, пожалуйста, свяжитесь с разработчиком."
+	
+	msg := tgbotapi.NewMessage(message.Chat.ID, helpText)
+	msg.ParseMode = "HTML"
+	b.api.Send(msg)
 }
 
 func (b *Bot) SendArticleSummary(article *news.Article, summary *summarizer.Summary) error {
