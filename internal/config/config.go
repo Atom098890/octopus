@@ -16,15 +16,20 @@ type Config struct {
 }
 
 func LoadConfig() (*Config, error) {
-	// Настройка Viper для чтения из файла
+	// Настройка Viper для чтения из переменных окружения
+	viper.AutomaticEnv()
+
+	// Также попробуем прочитать из файла .env, если он существует
 	viper.SetConfigFile(".env")
 	viper.SetConfigType("env")
-
+	
 	// Чтение файла
 	if err := viper.ReadInConfig(); err != nil {
-		// Если файл не найден, пробуем читать из переменных окружения
+		// Если файл не найден, продолжаем работу с переменными окружения
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, fmt.Errorf("error reading config file: %w", err)
+			// Если ошибка не связана с отсутствием файла, логируем её,
+			// но продолжаем работу с переменными окружения
+			fmt.Printf("Warning: Error reading .env file: %v\n", err)
 		}
 	}
 
@@ -32,9 +37,6 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("NEWS_CATEGORY", "technology")
 	viper.SetDefault("NEWS_LANGUAGE", "en")
 	viper.SetDefault("SCHEDULE_TIME", "0 9 * * *") // По умолчанию в 9:00 каждый день
-
-	// Чтение из переменных окружения
-	viper.AutomaticEnv()
 
 	// Проверка обязательных переменных
 	requiredEnvs := []string{
