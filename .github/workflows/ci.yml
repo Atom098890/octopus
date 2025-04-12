@@ -26,27 +26,18 @@ jobs:
         uses: webfactory/ssh-agent@v0.7.0
         with:
           ssh-private-key: ${{ secrets.BOT_KEY }}
+          log-public-key: false
+
+      - name: Deploy to VPS
+        run: |
+          # Prepare directory
+          ssh -o StrictHostKeyChecking=no -o LogLevel=QUIET -o UserKnownHostsFile=/dev/null atom@${{ secrets.SERVER_IP }} "mkdir -p /home/atom/goBot" > /dev/null 2>&1
           
-      - name: Prepare deployment directory
-        run: |
-          ssh -o StrictHostKeyChecking=no atom@${{ secrets.SERVER_IP }} "
-            mkdir -p /home/atom/goBot &&
-            chmod -R 755 /home/atom/goBot
-          "
-
-      - name: Upload code to VPS
-        run: |
-          echo "Copying files to VPS..."
-          ssh -o StrictHostKeyChecking=no atom@${{ secrets.SERVER_IP }} "rm -rf /home/atom/goBot/*"
-          rsync -av --progress ./ atom@${{ secrets.SERVER_IP }}:/home/atom/goBot/ --exclude .git
-          ssh -o StrictHostKeyChecking=no atom@${{ secrets.SERVER_IP }} "
-            cd /home/atom/goBot &&
-            ls -la cmd/bot || echo 'cmd/bot directory is missing!'
-          "
-
-      - name: Create env file on VPS
-        run: |
-          ssh -o StrictHostKeyChecking=no atom@${{ secrets.SERVER_IP }} "
+          # Upload code
+          rsync -q --no-verbose -e "ssh -o StrictHostKeyChecking=no -o LogLevel=QUIET -o UserKnownHostsFile=/dev/null" ./ atom@${{ secrets.SERVER_IP }}:/home/atom/goBot/ --exclude .git > /dev/null 2>&1
+          
+          # Create env file
+          ssh -o StrictHostKeyChecking=no -o LogLevel=QUIET -o UserKnownHostsFile=/dev/null atom@${{ secrets.SERVER_IP }} "
             cat > /home/atom/goBot/.env << EOL
             TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
             NEWS_API_KEY=${{ secrets.NEWS_API_KEY }}
@@ -55,43 +46,18 @@ jobs:
             NEWS_CATEGORY=technology
             NEWS_LANGUAGE=en
             EOL
-          "
-
-      - name: Deploy with Docker
-        run: |
-          ssh -o StrictHostKeyChecking=no atom@${{ secrets.SERVER_IP }} "
+          " > /dev/null 2>&1
+          
+          # Deploy
+          echo "Starting deployment..."
+          ssh -o StrictHostKeyChecking=no -o LogLevel=QUIET -o UserKnownHostsFile=/dev/null atom@${{ secrets.SERVER_IP }} "
             cd /home/atom/goBot &&
-            
-            # Build new image
-            docker build -t gobot:$(date +%Y%m%d_%H%M%S) .
-            
-            # Get the new image ID
-            NEW_IMAGE=\$(docker images -q gobot:$(date +%Y%m%d_%H%M%S))
-            
-            # Create and start new container
-            docker run -d \
-              --name gobot_new \
-              --restart unless-stopped \
-              --network host \
-              --env-file .env \
-              \$NEW_IMAGE
-            
-            # Wait for container to start
-            echo 'Waiting for container to start...'
-            sleep 15
-            
-            # Check if old container exists and remove it
-            if docker ps -a | grep -q gobot_prod; then
-              docker stop gobot_prod
-              docker rm gobot_prod
-            fi
-            
-            # Rename new container
-            docker rename gobot_new gobot_prod
-            
-            # Remove old images except the last 3
-            docker images 'gobot:*' --format '{{.ID}}' | tail -n +4 | xargs -r docker rmi
-            
-            # Print container status
-            docker ps | grep gobot_prod
-          " 
+            docker build -q -t gobot:\$(date +%s) . > /dev/null 2>&1 &&
+            IMAGE=gobot:\$(date +%s) &&
+            docker run -d --name gobot_new --restart unless-stopped --network host --env-file .env \$IMAGE > /dev/null 2>&1 &&
+            sleep 15 &&
+            docker ps -a | grep -q gobot_prod && docker stop gobot_prod > /dev/null 2>&1 && docker rm gobot_prod > /dev/null 2>&1 || true &&
+            docker rename gobot_new gobot_prod > /dev/null 2>&1 &&
+            docker images 'gobot:*' --format '{{.ID}}' | tail -n +4 | xargs -r docker rmi > /dev/null 2>&1
+          " > /dev/null 2>&1
+          echo "Deployment completed successfully" 
