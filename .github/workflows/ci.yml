@@ -54,17 +54,28 @@ jobs:
             TIMESTAMP=\$(date +%s) &&
             IMAGE=\"gobot:\$TIMESTAMP\" &&
             docker build --pull --no-cache -t \$IMAGE . &&
+            
             echo 'Starting new container...' &&
             docker run -d --name gobot_new --restart unless-stopped --network host --env-file .env \$IMAGE &&
+            
             echo 'Waiting for container to start...' &&
-            sleep 15 &&
-            echo 'Checking container status...' &&
+            sleep 5 &&
+            
+            echo 'New container status:' &&
             docker ps | grep gobot_new &&
+            
+            echo 'New container logs:' &&
+            docker logs gobot_new &&
+            
             echo 'Stopping old container...' &&
-            (docker ps -a | grep -q gobot_prod && docker stop gobot_prod && docker rm gobot_prod || true) &&
-            echo 'Renaming container...' &&
+            docker ps -a | grep -q gobot_prod && docker stop gobot_prod && docker rm gobot_prod || true &&
+            
+            echo 'Renaming new container to prod...' &&
             docker rename gobot_new gobot_prod &&
+            
             echo 'Cleaning up old images...' &&
-            docker images 'gobot:*' --format '{{.ID}}' | tail -n +4 | xargs -r docker rmi
+            docker images 'gobot:*' --format '{{.ID}}' | tail -n +5 | xargs -r docker rmi || true &&
+            
+            echo 'Deployment successful!'
           "
           echo "Deployment completed successfully"
