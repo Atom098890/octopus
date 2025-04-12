@@ -1,4 +1,4 @@
-FROM golang:1.23.0-alpine AS builder
+FROM golang:1.24.1-alpine AS builder
 
 WORKDIR /app
 
@@ -7,6 +7,8 @@ RUN apk add --no-cache git
 
 # Copy only go mod files first for better caching
 COPY go.mod go.sum ./
+
+RUN go version
 
 # Download all dependencies
 RUN go mod download
@@ -39,4 +41,4 @@ USER appuser
 ENV TZ=Europe/Moscow
 
 # Command to run the executable
-ENTRYPOINT ["./bot"] 
+ENTRYPOINT ["./bot"]
