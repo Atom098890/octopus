@@ -47,7 +47,7 @@ jobs:
             cd /home/atom/goBot &&
             TIMESTAMP=\$(date +%s) &&
             IMAGE=\"gobot:\$TIMESTAMP\" &&
-            docker build --pull --no-cache -t $IMAGE_TAG . &&
+            docker build --pull --no-cache -t \$IMAGE_TAG . &&
             docker run -d --name gobot_new --restart unless-stopped --network host --env-file .env \$IMAGE &&
             sleep 15 &&
             docker ps -a | grep -q gobot_prod && docker stop gobot_prod && docker rm gobot_prod || true &&
