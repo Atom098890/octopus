@@ -50,31 +50,43 @@ jobs:
             cd /home/atom/goBot &&
             echo 'Verifying Dockerfile on server...' &&
             cat Dockerfile | grep 'FROM golang:latest' &&
-            echo 'Building Docker image...' &&
+            
+            # Create timestamp for unique naming
             TIMESTAMP=\$(date +%s) &&
+            CONTAINER_NAME=\"gobot_\$TIMESTAMP\" &&
             IMAGE=\"gobot:\$TIMESTAMP\" &&
+            
+            echo 'Building Docker image...' &&
             docker build --pull --no-cache -t \$IMAGE . &&
             
-            echo 'Starting new container...' &&
-            docker run -d --name gobot_new --restart unless-stopped --network host --env-file .env \$IMAGE &&
+            echo 'Starting new container with name: '\$CONTAINER_NAME &&
+            docker run -d --name \$CONTAINER_NAME --restart unless-stopped --network host --env-file .env \$IMAGE &&
             
             echo 'Waiting for container to start...' &&
             sleep 5 &&
             
             echo 'New container status:' &&
-            docker ps | grep gobot_new &&
+            docker ps | grep \$CONTAINER_NAME &&
             
             echo 'New container logs:' &&
-            docker logs gobot_new &&
+            docker logs \$CONTAINER_NAME &&
             
-            echo 'Stopping old container...' &&
-            docker ps -a | grep -q gobot_prod && docker stop gobot_prod && docker rm gobot_prod || true &&
+            # Find and stop old containers
+            echo 'Finding and stopping old containers...' &&
+            for old in \$(docker ps -a --filter \"name=gobot_\" --format '{{.Names}}' | grep -v \$CONTAINER_NAME); do
+              echo \"Stopping container: \$old\" &&
+              docker stop \$old &&
+              docker rm \$old
+            done &&
             
-            echo 'Renaming new container to prod...' &&
-            docker rename gobot_new gobot_prod &&
+            echo 'Current running containers:' &&
+            docker ps | grep gobot &&
             
             echo 'Cleaning up old images...' &&
             docker images 'gobot:*' --format '{{.ID}}' | tail -n +5 | xargs -r docker rmi || true &&
+            
+            echo 'Cleaning up stopped containers...' &&
+            docker container prune -f &&
             
             echo 'Deployment successful!'
           "
