@@ -27,7 +27,7 @@ RUN go get github.com/mattn/go-sqlite3
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o bot ./cmd/bot/main.go
 
 # Start a new stage from scratch
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 
 WORKDIR /app
 
