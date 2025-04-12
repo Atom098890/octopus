@@ -26,39 +26,22 @@ jobs:
         uses: webfactory/ssh-agent@v0.7.0
         with:
           ssh-private-key: ${{ secrets.BOT_KEY }}
-
-      - name: Debug SSH setup
-        run: |
-          echo "Testing SSH connection..."
-          ssh-add -l
-          ssh -o StrictHostKeyChecking=no -vvv atom@${{ secrets.SERVER_IP }} "
-            echo 'Connection successful' &&
-            echo 'Current user:' &&
-            whoami &&
-            echo 'SSH directory contents:' &&
-            ls -la ~/.ssh/
-          "
           
       - name: Prepare deployment directory
         run: |
           ssh -o StrictHostKeyChecking=no atom@${{ secrets.SERVER_IP }} "
             mkdir -p /home/atom/goBot &&
-            ls -la /home/atom &&
-            echo 'Current permissions:' &&
-            ls -la /home/atom/goBot
+            chmod -R 755 /home/atom/goBot
           "
 
       - name: Upload code to VPS
         run: |
           echo "Copying files to VPS..."
           ssh -o StrictHostKeyChecking=no atom@${{ secrets.SERVER_IP }} "rm -rf /home/atom/goBot/*"
-          tar -czf - . | ssh -o StrictHostKeyChecking=no atom@${{ secrets.SERVER_IP }} "cd /home/atom/goBot && tar -xzf -"
+          rsync -av --progress ./ atom@${{ secrets.SERVER_IP }}:/home/atom/goBot/ --exclude .git
           ssh -o StrictHostKeyChecking=no atom@${{ secrets.SERVER_IP }} "
             cd /home/atom/goBot &&
-            echo 'Checking directory structure:' &&
-            ls -la &&
-            echo 'Checking cmd/bot directory:' &&
-            ls -la cmd/bot
+            ls -la cmd/bot || echo 'cmd/bot directory is missing!'
           "
 
       - name: Create env file on VPS
