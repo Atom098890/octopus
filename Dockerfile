@@ -20,6 +20,9 @@ RUN go mod download
 # Copy the rest of the source code
 COPY . .
 
+# Get SQLite driver
+RUN go get github.com/mattn/go-sqlite3
+
 # Build the application
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o bot ./cmd/bot/main.go
 

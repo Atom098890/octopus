@@ -37,9 +37,12 @@ func main() {
 	// Отложенное закрытие ресурсов
 	defer func() {
 		// Закрываем пользовательскую базу данных
-		if closer, ok := bot.Users().(interface{ Close() error }); ok {
-			if err := closer.Close(); err != nil {
-				logger.Printf("Error closing users database: %v", err)
+		users := bot.Users()
+		if users != nil {
+			if closer, ok := interface{}(users).(interface{ Close() error }); ok {
+				if err := closer.Close(); err != nil {
+					logger.Printf("Error closing users database: %v", err)
+				}
 			}
 		}
 	}()

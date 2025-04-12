@@ -59,6 +59,9 @@ jobs:
             echo 'Building Docker image...' &&
             docker build --pull --no-cache -t \$IMAGE . &&
             
+            echo 'Ensuring database volume exists...' &&
+            docker volume inspect gobot_data >/dev/null 2>&1 || docker volume create gobot_data &&
+            
             echo 'Starting new container with name: '\$CONTAINER_NAME &&
             docker run -d --name \$CONTAINER_NAME --restart unless-stopped --network host \
               -v gobot_data:/app/data \
