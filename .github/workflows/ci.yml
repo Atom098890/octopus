@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: Deploy Telegram Bot
 
 on:
   push:
@@ -7,11 +7,12 @@ on:
     branches: [ main ]
 
 jobs:
-  build-and-deploy:
+  test-and-deploy:
     runs-on: ubuntu-latest
     
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
       
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -21,60 +22,71 @@ jobs:
       - name: Run tests
         run: go test -v ./...
 
-      - name: Install SSH key
-        uses: shimataro/ssh-key-action@v2
+      - name: Set up SSH connection
+        uses: webfactory/ssh-agent@v0.7.0
         with:
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+          ssh-private-key: ${{ secrets.BOT_KEY }}
           
-      - name: Deploy to VPS
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
+      - name: Prepare deployment directory
         run: |
-          # Copy deployment files to VPS
-          scp Dockerfile $SSH_USER@$SSH_HOST:~/gobot/
-          scp .env $SSH_USER@$SSH_HOST:~/gobot/
-          scp -r . $SSH_USER@$SSH_HOST:~/gobot/src/
+          ssh -o StrictHostKeyChecking=no atom@${{ secrets.SERVER_IP }} "
+            mkdir -p /home/atom/goBot &&
+            chown -R atom:developers /home/atom/goBot &&
+            chmod -R 775 /home/atom/goBot
+          "
+
+      - name: Upload code to VPS
+        run: |
+          scp -o StrictHostKeyChecking=no -r * atom@${{ secrets.SERVER_IP }}:/home/atom/goBot/
           
-          # Execute deployment script on VPS
-          ssh $SSH_USER@$SSH_HOST << 'ENDSSH'
-            cd ~/gobot
+      - name: Create env file on VPS
+        run: |
+          ssh -o StrictHostKeyChecking=no atom@${{ secrets.SERVER_IP }} "
+            cat > /home/atom/goBot/.env << EOL
+            TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+            NEWS_API_KEY=${{ secrets.NEWS_API_KEY }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            SCHEDULE_TIME=0 9 * * *
+            NEWS_CATEGORY=technology
+            NEWS_LANGUAGE=en
+            EOL
+          "
+
+      - name: Deploy with Docker
+        run: |
+          ssh -o StrictHostKeyChecking=no atom@${{ secrets.SERVER_IP }} "
+            cd /home/atom/goBot &&
             
-            # Setup container names
-            CONTAINER_NAME="gobot"
-            NEW_VERSION=$(date +%s)
-            NEW_CONTAINER="${CONTAINER_NAME}_${NEW_VERSION}"
+            # Build new image
+            docker build -t gobot:$(date +%Y%m%d_%H%M%S) .
             
-            # Build new container
-            docker build -t $NEW_CONTAINER .
+            # Get the new image ID
+            NEW_IMAGE=\$(docker images -q gobot:$(date +%Y%m%d_%H%M%S))
             
-            # Start new container
+            # Create and start new container
             docker run -d \
-              --name $NEW_CONTAINER \
+              --name gobot_new \
               --restart unless-stopped \
               --network host \
               --env-file .env \
-              $NEW_CONTAINER
-              
-            # Wait for container to be healthy
-            echo "Waiting for container to start..."
+              \$NEW_IMAGE
+            
+            # Wait for container to start
+            echo 'Waiting for container to start...'
             sleep 15
             
-            # Get current container if exists
-            OLD_CONTAINER=$(docker ps -q -f name=$CONTAINER_NAME)
-            
-            if [ ! -z "$OLD_CONTAINER" ]; then
-              # Stop and remove old container
-              docker stop $OLD_CONTAINER
-              docker rm $OLD_CONTAINER
+            # Check if old container exists and remove it
+            if docker ps -a | grep -q gobot_prod; then
+              docker stop gobot_prod
+              docker rm gobot_prod
             fi
             
-            # Rename new container to standard name
-            docker rename $NEW_CONTAINER $CONTAINER_NAME
+            # Rename new container
+            docker rename gobot_new gobot_prod
             
-            # Cleanup old images (keep last 3)
-            docker images "gobot_*" --format "{{.ID}}" | tail -n +4 | xargs -r docker rmi
+            # Remove old images except the last 3
+            docker images 'gobot:*' --format '{{.ID}}' | tail -n +4 | xargs -r docker rmi
             
-            echo "Deployment completed successfully"
-          ENDSSH 
+            # Print container status
+            docker ps | grep gobot_prod
+          " 
