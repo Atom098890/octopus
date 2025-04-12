@@ -26,13 +26,26 @@ jobs:
         uses: webfactory/ssh-agent@v0.7.0
         with:
           ssh-private-key: ${{ secrets.BOT_KEY }}
+
+      - name: Debug SSH setup
+        run: |
+          echo "Testing SSH connection..."
+          ssh-add -l
+          ssh -o StrictHostKeyChecking=no -vvv atom@${{ secrets.SERVER_IP }} "
+            echo 'Connection successful' &&
+            echo 'Current user:' &&
+            whoami &&
+            echo 'SSH directory contents:' &&
+            ls -la ~/.ssh/
+          "
           
       - name: Prepare deployment directory
         run: |
           ssh -o StrictHostKeyChecking=no atom@${{ secrets.SERVER_IP }} "
             mkdir -p /home/atom/goBot &&
-            chown -R atom:developers /home/atom/goBot &&
-            chmod -R 775 /home/atom/goBot
+            ls -la /home/atom &&
+            echo 'Current permissions:' &&
+            ls -la /home/atom/goBot
           "
 
       - name: Upload code to VPS
