@@ -22,70 +22,36 @@ jobs:
 
       - name: Deploy to VPS
         run: |
+          # Prepare directory
           echo "Creating directory..."
-          ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null atom@${{ secrets.SERVER_IP }} "mkdir -p /home/atom/goBot"
+          ssh -o StrictHostKeyChecking=no -o LogLevel=QUIET -o UserKnownHostsFile=/dev/null atom@${{ secrets.SERVER_IP }} "mkdir -p /home/atom/goBot" > /dev/null 2>&1
           
+          # Upload code
           echo "Uploading code..."
-          rsync -av -e "ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null" ./ atom@${{ secrets.SERVER_IP }}:/home/atom/goBot/ --exclude .git
+          rsync -q --no-verbose -e "ssh -o StrictHostKeyChecking=no -o LogLevel=QUIET -o UserKnownHostsFile=/dev/null" ./ atom@${{ secrets.SERVER_IP }}:/home/atom/goBot/ --exclude .git > /dev/null 2>&1
           
-          echo "Creating env file and deploying..."
-          ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null atom@${{ secrets.SERVER_IP }} "
-            set -e
-            cd /home/atom/goBot || { echo 'Failed to change directory'; exit 1; }
-            
-            echo 'Creating .env file...'
-            cat > .env << EOL
-            TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
-            NEWS_API_KEY=${{ secrets.NEWS_API_KEY }}
-            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-            SCHEDULE_TIME=0 9 * * *
-            NEWS_CATEGORY=technology
-            NEWS_LANGUAGE=en
-            EOL
-
-            echo 'Building Docker image...'
-            if ! docker build -t gobot:\$(date +%s) .; then
-              echo 'Docker build failed'
-              exit 1
-            fi
-            IMAGE=gobot:\$(date +%s)
-            
-            echo 'Starting new container...'
-            if ! docker run -d --name gobot_new --restart unless-stopped --network host --env-file .env \$IMAGE; then
-              echo 'Failed to start container'
-              exit 1
-            fi
-            
-            echo 'Waiting for container to start...'
-            sleep 15
-            
-            if ! docker ps | grep -q gobot_new; then
-              echo 'Error: New container failed to start'
-              docker logs gobot_new
-              exit 1
-            fi
-            
-            echo 'Stopping old container...'
-            if docker ps -a | grep -q gobot_prod; then
-              docker stop gobot_prod || echo 'Failed to stop old container'
-              docker rm gobot_prod || echo 'Failed to remove old container'
-            fi
-            
-            echo 'Renaming new container...'
-            if ! docker rename gobot_new gobot_prod; then
-              echo 'Failed to rename container'
-              exit 1
-            fi
-            
-            echo 'Cleaning up old images...'
-            docker images 'gobot:*' --format '{{.ID}}' | tail -n +4 | xargs -r docker rmi || echo 'No old images to clean up'
-            
-            echo 'Deployment successful!'
+          # Create env file
+          echo "Creating env file..."
+          ssh -o StrictHostKeyChecking=no -o LogLevel=QUIET -o UserKnownHostsFile=/dev/null atom@${{ secrets.SERVER_IP }} "cat > /home/atom/goBot/.env << 'EOL'
+          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          NEWS_API_KEY=${{ secrets.NEWS_API_KEY }}
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          SCHEDULE_TIME=0 9 * * *
+          NEWS_CATEGORY=technology
+          NEWS_LANGUAGE=en
+          EOL" > /dev/null 2>&1
+          
+          # Deploy
+          echo "Starting deployment..."
+          ssh -o StrictHostKeyChecking=no -o LogLevel=QUIET -o UserKnownHostsFile=/dev/null atom@${{ secrets.SERVER_IP }} "
+            cd /home/atom/goBot &&
+            TIMESTAMP=\$(date +%s) &&
+            IMAGE=\"gobot:\$TIMESTAMP\" &&
+            docker build -t \$IMAGE . &&
+            docker run -d --name gobot_new --restart unless-stopped --network host --env-file .env \$IMAGE &&
+            sleep 15 &&
+            docker ps -a | grep -q gobot_prod && docker stop gobot_prod && docker rm gobot_prod || true &&
+            docker rename gobot_new gobot_prod &&
+            docker images 'gobot:*' --format '{{.ID}}' | tail -n +4 | xargs -r docker rmi
           "
-          
-          if [ $? -ne 0 ]; then
-            echo "Deployment failed"
-            exit 1
-          fi
-          
-          echo "Deployment completed successfully" 
+          echo "Deployment completed successfully"
