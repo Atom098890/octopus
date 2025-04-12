@@ -24,19 +24,25 @@ jobs:
 
       - name: Set up SSH connection
         uses: webfactory/ssh-agent@v0.7.0
+        env:
+          SSH_AUTH_SOCK: /dev/null
         with:
           ssh-private-key: ${{ secrets.BOT_KEY }}
           log-public-key: false
+          log-key-fingerprint: false
 
       - name: Deploy to VPS
         run: |
           # Prepare directory
-          ssh -o StrictHostKeyChecking=no -o LogLevel=QUIET -o UserKnownHostsFile=/dev/null atom@${{ secrets.SERVER_IP }} "mkdir -p /home/atom/goBot" > /dev/null 2>&1
+          echo "Creating directory..."
+          ssh -o StrictHostKeyChecking=no -o LogLevel=QUIET -o UserKnownHostsFile=/dev/null atom@${{ secrets.SERVER_IP }} "mkdir -p /home/atom/goBot"
           
           # Upload code
-          rsync -q --no-verbose -e "ssh -o StrictHostKeyChecking=no -o LogLevel=QUIET -o UserKnownHostsFile=/dev/null" ./ atom@${{ secrets.SERVER_IP }}:/home/atom/goBot/ --exclude .git > /dev/null 2>&1
+          echo "Uploading code..."
+          rsync -q --no-verbose -e "ssh -o StrictHostKeyChecking=no -o LogLevel=QUIET -o UserKnownHostsFile=/dev/null" ./ atom@${{ secrets.SERVER_IP }}:/home/atom/goBot/ --exclude .git
           
           # Create env file
+          echo "Creating env file..."
           ssh -o StrictHostKeyChecking=no -o LogLevel=QUIET -o UserKnownHostsFile=/dev/null atom@${{ secrets.SERVER_IP }} "
             cat > /home/atom/goBot/.env << EOL
             TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -46,18 +52,38 @@ jobs:
             NEWS_CATEGORY=technology
             NEWS_LANGUAGE=en
             EOL
-          " > /dev/null 2>&1
+          "
           
           # Deploy
           echo "Starting deployment..."
           ssh -o StrictHostKeyChecking=no -o LogLevel=QUIET -o UserKnownHostsFile=/dev/null atom@${{ secrets.SERVER_IP }} "
-            cd /home/atom/goBot &&
-            docker build -q -t gobot:\$(date +%s) . > /dev/null 2>&1 &&
-            IMAGE=gobot:\$(date +%s) &&
-            docker run -d --name gobot_new --restart unless-stopped --network host --env-file .env \$IMAGE > /dev/null 2>&1 &&
-            sleep 15 &&
-            docker ps -a | grep -q gobot_prod && docker stop gobot_prod > /dev/null 2>&1 && docker rm gobot_prod > /dev/null 2>&1 || true &&
-            docker rename gobot_new gobot_prod > /dev/null 2>&1 &&
-            docker images 'gobot:*' --format '{{.ID}}' | tail -n +4 | xargs -r docker rmi > /dev/null 2>&1
-          " > /dev/null 2>&1
+            cd /home/atom/goBot || { echo 'Failed to cd into directory'; exit 1; }
+            
+            echo 'Building Docker image...'
+            docker build -q -t gobot:\$(date +%s) . || { echo 'Docker build failed'; exit 1; }
+            
+            IMAGE=gobot:\$(date +%s)
+            echo 'Starting new container...'
+            docker run -d --name gobot_new --restart unless-stopped --network host --env-file .env \$IMAGE || { echo 'Docker run failed'; exit 1; }
+            
+            echo 'Waiting for container to start...'
+            sleep 15
+            
+            echo 'Checking container status...'
+            docker ps | grep gobot_new || { echo 'New container not running'; exit 1; }
+            
+            echo 'Stopping old container...'
+            if docker ps -a | grep -q gobot_prod; then
+              docker stop gobot_prod || { echo 'Failed to stop old container'; exit 1; }
+              docker rm gobot_prod || { echo 'Failed to remove old container'; exit 1; }
+            fi
+            
+            echo 'Renaming container...'
+            docker rename gobot_new gobot_prod || { echo 'Failed to rename container'; exit 1; }
+            
+            echo 'Cleaning up old images...'
+            docker images 'gobot:*' --format '{{.ID}}' | tail -n +4 | xargs -r docker rmi
+            
+            echo 'Deployment successful'
+          "
           echo "Deployment completed successfully" 
