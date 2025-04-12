@@ -61,6 +61,7 @@ jobs:
             
             echo 'Starting new container with name: '\$CONTAINER_NAME &&
             docker run -d --name \$CONTAINER_NAME --restart unless-stopped --network host \
+              -v gobot_data:/app/data \
               -e TELEGRAM_BOT_TOKEN=\"${{ secrets.TELEGRAM_BOT_TOKEN }}\" \
               -e NEWS_API_KEY=\"${{ secrets.NEWS_API_KEY }}\" \
               -e OPENAI_API_KEY=\"${{ secrets.OPENAI_API_KEY }}\" \

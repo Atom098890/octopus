@@ -33,6 +33,16 @@ func main() {
 	if err != nil {
 		logger.Fatalf("Failed to create Telegram bot: %v", err)
 	}
+	
+	// Отложенное закрытие ресурсов
+	defer func() {
+		// Закрываем пользовательскую базу данных
+		if closer, ok := bot.Users().(interface{ Close() error }); ok {
+			if err := closer.Close(); err != nil {
+				logger.Printf("Error closing users database: %v", err)
+			}
+		}
+	}()
 
 	// Создание контекста с отменой
 	ctx, cancel := context.WithCancel(context.Background())

@@ -177,4 +177,9 @@ func (b *Bot) formatMessage(article *news.Article, summary *summarizer.Summary) 
 	sb.WriteString(fmt.Sprintf("\n📅 Published: %s", article.PublishedAt.Format("02.01.2006 15:04")))
 
 	return sb.String()
-} 
+}
+
+// Users возвращает объект пользователей
+func (b *Bot) Users() *Users {
+	return b.users
+}

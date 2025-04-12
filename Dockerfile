@@ -5,6 +5,9 @@ WORKDIR /app
 # Install build dependencies
 RUN apk add --no-cache git || apt-get update && apt-get install -y git
 
+# Install SQLite development libraries
+RUN apt-get update && apt-get install -y sqlite3 libsqlite3-dev || apk add --no-cache sqlite sqlite-dev
+
 # Enable automatic toolchain download
 ENV GOTOOLCHAIN=auto
 
@@ -18,22 +21,25 @@ RUN go mod download
 COPY . .
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bot ./cmd/bot/main.go
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o bot ./cmd/bot/main.go
 
 # Start a new stage from scratch
-FROM alpine:latest
+FROM debian:bullseye-slim
 
 WORKDIR /app
 
 # Install runtime dependencies
-RUN apk add --no-cache ca-certificates tzdata
+RUN apt-get update && apt-get install -y ca-certificates tzdata sqlite3 && rm -rf /var/lib/apt/lists/*
+
+# Create data directory for persistent storage
+RUN mkdir -p /app/data
 
 # Copy the binary from builder
 COPY --from=builder /app/bot .
 
 # Add non-root user
-RUN adduser -D -g '' appuser && \
-    chown -R appuser:appuser /app
+RUN useradd -r -u 1000 -g root appuser && \
+    chown -R appuser:root /app
 
 # Use non-root user
 USER appuser
