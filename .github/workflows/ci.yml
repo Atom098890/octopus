@@ -52,7 +52,7 @@ jobs:
         run: |
           echo "Copying files to VPS..."
           ssh -o StrictHostKeyChecking=no atom@${{ secrets.SERVER_IP }} "rm -rf /home/atom/goBot/*"
-          scp -o StrictHostKeyChecking=no -r ./* atom@${{ secrets.SERVER_IP }}:/home/atom/goBot/
+          tar -czf - . | ssh -o StrictHostKeyChecking=no atom@${{ secrets.SERVER_IP }} "cd /home/atom/goBot && tar -xzf -"
           ssh -o StrictHostKeyChecking=no atom@${{ secrets.SERVER_IP }} "
             cd /home/atom/goBot &&
             echo 'Checking directory structure:' &&
