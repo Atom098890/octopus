@@ -14,8 +14,11 @@ RUN go mod download
 # Copy the source code
 COPY . .
 
+# Verify the directory structure
+RUN ls -la && ls -la cmd/bot
+
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o bot ./cmd/bot
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bot ./cmd/bot
 
 # Start a new stage from scratch
 FROM alpine:latest

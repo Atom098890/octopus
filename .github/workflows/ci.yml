@@ -50,8 +50,17 @@ jobs:
 
       - name: Upload code to VPS
         run: |
-          scp -o StrictHostKeyChecking=no -r * atom@${{ secrets.SERVER_IP }}:/home/atom/goBot/
-          
+          echo "Copying files to VPS..."
+          ssh -o StrictHostKeyChecking=no atom@${{ secrets.SERVER_IP }} "rm -rf /home/atom/goBot/*"
+          scp -o StrictHostKeyChecking=no -r ./* atom@${{ secrets.SERVER_IP }}:/home/atom/goBot/
+          ssh -o StrictHostKeyChecking=no atom@${{ secrets.SERVER_IP }} "
+            cd /home/atom/goBot &&
+            echo 'Checking directory structure:' &&
+            ls -la &&
+            echo 'Checking cmd/bot directory:' &&
+            ls -la cmd/bot
+          "
+
       - name: Create env file on VPS
         run: |
           ssh -o StrictHostKeyChecking=no atom@${{ secrets.SERVER_IP }} "
